@@ -1,0 +1,105 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+	<title>Bing Texture</title>
+	<meta charset="utf8">
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+	<style>
+	  body{
+		padding: 0;
+		margin: 0;
+	  }
+	  .texture {
+		position: relative;
+		/*border: 1px solid red;*/
+	  }
+
+	  .tile {
+		position: absolute;
+	  }
+	</style>
+	<script type="text/javascript">
+		$(function(){
+			$('.texture').append(getMapTexture(2, function(){console.log("2 done")}));
+			$('.texture').append(getMapTexture(3, function(){console.log("3 done")}));
+			$('.texture').append(getMapTexture(4, function(){console.log("4 done")}));
+			$('.texture').append(getMapTexture(5, function(){console.log("5 done")}));
+		})
+
+		function getMapTexture(resolution, done){
+			var tileSize = 256;
+			var numSegments = Math.pow(2, resolution)
+			var numTiles = numSegments * numSegments;
+			var tilesLoaded = 0;
+			var canvasSize = tileSize * numSegments;
+			var canvas = $('<canvas/>').attr({width: canvasSize, height: canvasSize}).get(0);
+			var canvasContext = canvas.getContext("2d");
+			var startTime = Date.now();
+
+			function generateQuads(res, quad){
+			  if (res <= resolution) {
+				if (res == resolution) {
+				  loadTile(quad)
+				  //console.log(res, maxResolution, quad);
+				}
+
+				generateQuads(res + 1, quad + "0")
+				generateQuads(res + 1, quad + "1")
+				generateQuads(res + 1, quad + "2")
+				generateQuads(res + 1, quad + "3")
+			  }
+			}
+
+			function loadTile(quad) {
+				var template = "https://ecn.t{server}.tiles.virtualearth.net/tiles/r{quad}.jpeg?g=0"
+				var numServers = 7;
+				var server = Math.round(Math.random() *  numServers);
+				var url = template.replace("{server}", server).replace("{quad}",quad)
+				var coords = getCoords(quad)
+				//console.log(quad, coords.x, coords.y)
+
+				var tile = $("<img/>").attr("src", url)
+				tile.load(function(){
+					tilesLoaded++;
+					canvasContext.drawImage(tile.get(0), coords.x * tileSize, coords.y * tileSize, tileSize, tileSize)
+					if (tilesLoaded == numTiles && typeof(done) == "function") {
+						console.log(resolution, Date.now() - startTime)
+						done();
+					}
+				})
+			}
+			
+			function getCoords(quad) {
+			  var x = 0;
+			  var y = 0;
+			  var last = quad.length - 1
+			  //console.log(quad, "last", last)
+
+			  for(var i = last; i >= 0; i--){
+				var chr = quad.charAt(i)
+				var pow = Math.pow(2, last - i)
+
+				if(chr == "1") {
+				  x += pow
+				} else if(chr == "2") {
+				  y += pow
+				} else if(chr == "3") {
+				  x += pow
+				  y += pow
+				}
+			  }
+
+			  return {x: x, y: y}
+			}
+
+			generateQuads(0, "");
+			return canvas;
+		}
+	</script>    
+  </head>
+  <body>
+	<div class="texture"></div>
+
+  </body>
+</html>

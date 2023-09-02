@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html>
+  <head>
+	<title>Bing Earth</title>
+	<meta charset="utf8">
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+	<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r72/three.js"></script> -->
+	<script src="./three.js"></script>
+	<script src="./tween.js"></script>
+	<script src="./threex.js"></script>
+	<script src="./heatmap.js"></script>
+
+	<style>
+	</style>
+	<script type="text/javascript">
+	var baseUrl = '/';
+	var container;
+	var viewport;
+	var earthTextures = {};
+	var type = 'sphere' //'plane';
+
+	$(function(){
+		console.log('hello');
+		container = $('.bingEarth');
+		viewport = {width: $(window).width(), height: $(window).height()}
+		$(window).resize(function(){
+			var options = {viewport: {width: $(window).width(), height: $(window).height()}};
+			update(options);
+		})
+		initSettings()
+		initTextures()
+		initScene()
+
+		var data = [];
+		var numPoints = 500;
+		for (var i = 0; i < numPoints; ++i) {
+			var point = {lat: (0.5 - Math.random()) * 180 , lng: -180 + Math.random() * 360 , height: Math.random() * settings.maxValues.height}
+			data.push(point)
+			createBar(point)
+		}
+
+		createHeatMap(data, settings.heatmapSize)
+	})
+
+	function initSettings (){
+		var settings = this.settings = {};
+		settings.autoRotate = true;
+		settings.earthRadius = 20;
+		settings.stepInterval = 2000;
+		settings.cameraRadius = 100;
+		settings.earthImage = 'bing2k.png' //'mercerator.png';
+		settings.earthSegments = 50;
+		settings.heatmapSize = 500
+		settings.heatIntensity = 10
+		settings.rotateSpeed = 0.5
+		settings.maxValues = {
+			count: 100,
+			size: 50,
+			height: 5,
+			colors: 21,
+			velocity: 20
+		};
+	}
+
+	function initTextures(){
+		var textureUrl = this.baseUrl + 'bing/';
+		earthTextures[1] = THREE.ImageUtils.loadTexture(textureUrl + '1k.png')
+		earthTextures[2] = THREE.ImageUtils.loadTexture(textureUrl + '2k.png')
+		earthTextures[4] = THREE.ImageUtils.loadTexture(textureUrl + '4k.png')
+		earthTextures[8] = THREE.ImageUtils.loadTexture(textureUrl + '8k.png')
+	}
+
+	function initScene() {
+		var clock = new THREE.Clock();
+		var renderer = this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+		this.container.append(renderer.domElement);
+		var camera = this.camera = new THREE.PerspectiveCamera(35, viewport.width / viewport.height, 0.1, 10000);
+		var controls = this.controls = new THREE.OrbitControls(camera, renderer.domElement);
+		var scene = this.scene = new THREE.Scene();
+
+		renderer.setSize(viewport.width, viewport.height);
+		this.container.append(renderer.domElement);
+		renderer.setClearColor(0xbac4d2, 1);
+		camera.position.z = settings.cameraRadius;
+
+		controls.maxDistance = settings.cameraRadius * 2;
+		controls.minDistance = settings.earthRadius + 1;
+		controls.rotateSpeed = 0.5
+
+		if (type == 'plane') {
+			controls.minDistance = 5;
+		}
+
+		var ambientLight = new THREE.AmbientLight(0x000000);
+		var light1 =  new THREE.DirectionalLight(0xffffff, 0.4);
+		var light2 =  new THREE.DirectionalLight(0xffffff, 0.4);
+		var earth = this.earth = this.createEarth();
+
+		scene.add(ambientLight);
+		scene.add(light1);
+		scene.add(light2);
+		scene.add(earth);
+
+		light1.position.set(20,20,20)
+		light2.position.set(0,0,-20)
+
+		console.log('scene created', this.viewport);
+		var cameraRotation = 0;
+		// var cloudDelta = 0.001;
+		var cameraDelta = -0.002;
+		var _zis = this;
+		requestAnimationFrame(function render() {
+			timerID = requestAnimationFrame(render);
+			//clouds.rotation.y += cloudDelta;
+			if (settings.autoRotate) {
+				cameraRotation += cameraDelta;
+				camera.position.x = settings.cameraRadius * Math.sin(cameraRotation);
+				camera.position.z = settings.cameraRadius * Math.cos(cameraRotation);
+				camera.lookAt(earth);
+			}
+			controls.update(clock.getDelta());
+			//for (var i = 0, len = sparks.length; i < len; i++) {
+			//}
+			setEarthTexture()
+			// randomHeat();
+			renderer.render(scene, camera);
+		});
+	}
+
+	// Semantic zooming
+	function setEarthTexture(distance) {
+		var distance = Math.floor((this.settings.cameraRadius - this.camera.position.length()) * 12/this.settings.cameraRadius)
+
+		var texture;
+		if (distance >= 8) {
+			texture = earthTextures[8];
+		} else if (distance >= 4) {
+			texture = earthTextures[4];
+		} else if (distance >= 2) {
+			texture = earthTextures[2];
+		} else {
+			texture = earthTextures[1];
+		}
+
+		if (this.earth.material.map !== texture) {
+			this.earth.material.map = texture;
+		}
+
+		if (distance < 1) {
+			this.controls.rotateSpeed = this.settings.rotateSpeed;
+		} else {
+			this.controls.rotateSpeed = this.settings.rotateSpeed / distance;
+		}
+
+		//console.log(distance);
+	}
+
+	function createEarth() {
+		var geometry = new MerceratorSphere(this.settings.earthRadius, this.settings.earthSegments, this.settings.earthSegments);
+		console.log("geometry", geometry);
+		var material = new THREE.MeshPhongMaterial({
+			map: earthTextures[1],
+			side: THREE.DoubleSide,
+			shininess: 1,
+			emissive: 0xaaaaaa,
+		});
+		return new THREE.Mesh(geometry, material);
+	}
+
+
+	function update(options) {
+		if (options.viewport.height !== this.viewport.height || options.viewport.width !== this.viewport.width) {
+			var viewport = this.viewport = options.viewport
+			this.camera.aspect = viewport.width / viewport.height;
+			this.camera.updateProjectionMatrix();
+			this.renderer.setSize( viewport.width, viewport.height );
+			this.controls.handleResize();
+		}
+	}
+
+	function createBar(opts) {
+		var settings = this.settings;
+
+		var lat = opts.lat / 180 * Math.PI; //radians
+		var lng = opts.lng / 180 * Math.PI;
+
+		var x = Math.cos(lng) * Math.cos(lat);
+		var z = -Math.sin(lng) * Math.cos(lat);
+		var y = Math.sin(lat);
+
+		if (type === 'plane') {
+			x = opts.lng / 180
+			y = opts.lat / 90;
+			z = (opts.height * 0.5)/ settings.earthRadius;
+		}
+
+		var v = new THREE.Vector3(x, y, z);
+
+		var geometry = new THREE.CubeGeometry( 0.2,0.2,0.2 );
+		var material = new THREE.MeshPhongMaterial({
+			color: 0xff00ff,
+			emissive: 0x550055
+		});
+
+		var bar = new THREE.Mesh( geometry, material );
+		var p = v.clone().multiplyScalar(settings.earthRadius)
+		bar.position.set(p.x, p.y, p.z);
+		bar.lookAt(v)
+
+		if (type === 'plane') {
+			bar.lookAt(position)
+		}
+
+		this.scene.add( bar );
+	}
+
+	function randomHeat() {
+		heatmap.clear()
+
+		for(var i = 0; i < 500; ++i){
+			var x = Math.random() * 500;
+			var y = Math.random() * 500;
+			heatmap.addPoint(x, y, 30, 0.3);
+		}
+
+		heatmap.update();
+		heatmap.display();
+		//heatmap.canvas.globalAlpha = 0.5;
+		heatTexture.needsUpdate = true;
+
+		console.log("randomHeat", heatmap, heatTexture)
+	}
+
+	function createHeatMap(data, size) {
+		heatmap = createWebGLHeatmap({width: size, height: size});
+
+		// for(var i = 0; i < data.length; ++i){
+		// 	var point = data[i]
+		// 	var x = (180 + point.lng) / 360 * 500;
+		// 	var y = (1 - ((90 + point.lat) / 180)) * 500;
+		// 	heatmap.addPoint(x, y, point.height * settings.heatIntensity, 0.3);
+		// }
+
+		// heatmap.update();
+		// heatmap.display();
+		// heatmap.canvas.globalAlpha = 0.5;
+
+		// canvas contents will be used for a texture
+		// heatmap.update()
+		// heatmap.display()
+
+		heatTexture = new THREE.Texture(heatmap.canvas)
+		randomHeat()
+
+		//setInterval(function(){ randomHeat()}, 1000)
+
+		//setInterval (randomHeat, 500)
+
+		var material = new THREE.MeshBasicMaterial( {map: heatTexture} );
+		material.transparent = true;
+
+		var geometry = new THREE.SphereGeometry(settings.earthRadius + 0.1, settings.earthSegments, settings.earthSegments);
+		var mesh = new THREE.Mesh(geometry, material);
+
+		if (type === 'plane') {
+			geometry = new THREE.PlaneGeometry(settings.earthRadius * 2, settings.earthRadius * 2);
+			mesh.geometry = geometry
+			mesh.position.z = 0.1;
+		}
+
+		this.scene.add( mesh );
+	}
+
+	MerceratorSphere = function ( radius, widthSegments, heightSegments ) {
+		THREE.Geometry.call( this );
+
+		this.radius = radius;
+		this.widthSegments =  widthSegments;
+		this.heightSegments = heightSegments;
+
+		this.t = 0;
+		if (type === 'plane') {
+			this.t = 1;
+		}
+
+		var phiLength = Math.PI * 2;
+		var thetaLength = Math.PI;
+
+		var x, y, vertices = [], uvs = [];
+
+		function interplolate(a, b, t) {
+			return (1 - t) * a + t * b
+		}
+
+		// interpolates between sphere and plane
+		function interpolateVertex(u, v, t) {
+			var maxLng = Math.PI * 2;
+			var maxLat = Math.PI;
+			var radius = this.radius;
+
+			var sphereX = - radius * Math.cos(u * maxLng ) * Math.sin(v * maxLat );
+			var sphereY = - radius * Math.cos(v * maxLat );
+			var sphereZ = radius * Math.sin(u * maxLng ) * Math.sin(v * maxLat );
+
+			var planeX = u * radius * 2 - radius
+			var planeY = v * radius * 2 - radius
+			var planeZ = 0
+
+			var x = interplolate(sphereX, planeX, t)
+			var y = interplolate(sphereY, planeY, t)
+			var z = interplolate(sphereZ, planeZ, t)
+
+			return new THREE.Vector3(x, y, z);
+		}
+
+		// http://mathworld.wolfram.com/MercatorProjection.html
+		// mercerator projection goes form +85.05 to -85.05 degrees
+		function interpolateUV(u, v, t) {
+			var lat = (v - 0.5) * 85.05 * 2 / 180 *  Math.PI; //turn from 0-1 into lat in radians
+			var sin = Math.sin(lat)
+			var normalizedV = 0.5 +  0.25 * Math.log((1 + sin)/(1 - sin)) / Math.PI
+			return new THREE.Vector2( u,  normalizedV) ;//interplolate(normalizedV1, v, t))
+		}
+
+		for ( y = 0; y <= heightSegments; y ++ ) {
+
+			var verticesRow = [];
+			var uvsRow = [];
+
+			for ( x = 0; x <= widthSegments; x ++ ) {
+
+				var u = x / widthSegments;
+				var v = y / heightSegments;
+
+				var vertex = new THREE.Vector3();
+				var vx = - radius * Math.cos(u * phiLength ) * Math.sin(v * thetaLength );
+				var vy = - radius * Math.cos(v * thetaLength );
+				var vz = radius * Math.sin(u * phiLength ) * Math.sin(v * thetaLength );
+
+				//vx = u * radius * 2 - radius
+				//vy = v * radius * 2 - radius
+				//vz = 0 //radius;
+
+
+				var theta = (v - 0.5) * 85.05 * 2 / 180;
+				var sin = Math.sin(theta * Math.PI)
+				var projectedV = 0.5 +  0.25 * (Math.log((1 + sin)/(1 - sin)) / Math.PI)
+				//v = 0.5 - v
+				//v = projectedV;
+				if (x == widthSegments) console.log(v, projectedV)
+				//v = Math.asinh(Math.tan((v - 0.5) * Math.PI * 2))/Math.PI
+
+				this.vertices.push(interpolateVertex.call(this, u, v, this.t));
+				uvsRow.push( interpolateUV.call(this, u, v, this.t));
+				verticesRow.push( this.vertices.length - 1 );
+			}
+
+			vertices.push( verticesRow );
+			uvs.push( uvsRow );
+
+		}
+
+		console.log(vertices, uvs);
+
+		for ( y = 0; y < this.heightSegments; y ++ ) {
+
+			for ( x = 0; x < this.widthSegments; x ++ ) {
+
+				var v1 = vertices[ y ][ x + 1 ];
+				var v2 = vertices[ y ][ x ];
+				var v3 = vertices[ y + 1 ][ x ];
+				var v4 = vertices[ y + 1 ][ x + 1 ];
+
+				var n1 = this.vertices[ v1 ].clone().normalize();
+				var n2 = this.vertices[ v2 ].clone().normalize();
+				var n3 = this.vertices[ v3 ].clone().normalize();
+				var n4 = this.vertices[ v4 ].clone().normalize();
+
+				var uv1 = uvs[ y ][ x + 1 ].clone();
+				var uv2 = uvs[ y ][ x ].clone();
+				var uv3 = uvs[ y + 1 ][ x ].clone();
+				var uv4 = uvs[ y + 1 ][ x + 1 ].clone();
+
+				var normals;
+				if (type !== 'plane') {
+					normals = [ n1, n2, n3, n4 ];
+				}
+
+				this.faces.push( new THREE.Face4( v1, v2, v3, v4 , normals ));
+				this.faceVertexUvs[ 0 ].push( [ uv1, uv2, uv3, uv4 ] );
+			}
+
+		}
+
+		this.computeCentroids();
+		this.computeFaceNormals();
+
+		this.boundingSphere = new THREE.Sphere( new THREE.Vector3(), radius );
+
+	};
+
+	MerceratorSphere.prototype = Object.create( THREE.Geometry.prototype );
+
+	</script>
+  </head>
+  <body>
+	<div class="bingEarth"></div>
+
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
